@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tablero · CelularesVR</title>
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+  <nav class="navbar">
+    <span class="marca">📱 CelularesVR</span>
+    <a href="index.html">Nuevo pedido</a>
+    <a href="tablero.html">Tablero</a>
+    <a href="estadisticas.html">Estadísticas</a>
+  </nav>
+  <main class="contenedor">
+    <h1>Tablero de pedidos</h1>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr><th>#</th><th>Fecha</th><th>Cliente</th><th>Productos</th><th>Total</th><th>Estado</th></tr>
+        </thead>
+        <tbody id="cuerpo-pedidos">
+          <tr><td colspan="6" class="vacio">Cargando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+  <script type="module" src="js/tablero.js"></script>
+</body>
+</html>

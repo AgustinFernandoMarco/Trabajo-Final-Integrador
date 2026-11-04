@@ -1,0 +1,31 @@
+{
+  "name": "trabajo-final-integrador",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+  "start": "node src/server.js",
+  "dev": "nodemon src/server.js"
+},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AgustinFernandoMarco/Trabajo-Final-Integrador.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/AgustinFernandoMarco/Trabajo-Final-Integrador/issues"
+  },
+  "homepage": "https://github.com/AgustinFernandoMarco/Trabajo-Final-Integrador#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "mssql": "^12.7.13"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

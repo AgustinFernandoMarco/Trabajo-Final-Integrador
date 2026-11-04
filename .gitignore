@@ -1,0 +1,5 @@
+# Dependencias y secretos: NUNCA se suben
+node_modules/
+.env
+logs/
+*.log
