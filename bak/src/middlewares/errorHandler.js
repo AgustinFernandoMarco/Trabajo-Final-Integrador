@@ -1,19 +1,7 @@
-<<<<<<< HEAD
-// Middleware de errores centralizado.
-// Traduce los códigos propios de la base (P0001 a P0006, ver db/script.sql) a HTTP 400 / 404.
-// Los errores inesperados responden 500 sin exponer detalles internos.
-
-// Códigos que significan "no encontrado"
-const CODIGOS_404 = ["P0004", "P0006"];
-
-// Códigos de datos inválidos (los P000x del script, más restricciones de la base)
-const CODIGOS_400 = ["P0001", "P0002", "P0003", "P0005", "23503", "23514"];
-=======
 // Middleware de gestión de errores centralizado para Express
 
 // Códigos de Postgres que significan "No encontrado" (ej: RAISE EXCEPTION 'P0004')
 const CODIGOS_404 = new Set(["P0004", "P0006"]);
->>>>>>> 3cbe6b0e6923097301248c5923c68245e2935a52
 
 // Códigos de Postgres/App para datos inválidos o violaciones de restricciones:
 // P0001-P0005: Errores personalizados del script SQL
@@ -25,35 +13,6 @@ const CODIGOS_400 = new Set(["P0001", "P0002", "P0003", "P0005", "23503", "23514
  * Middleware para capturar rutas inexistentes (404 Not Found).
  */
 function noEncontrado(req, res) {
-<<<<<<< HEAD
-  res.status(404).json({ 
-    ok: false, 
-    mensaje: `Ruta no encontrada: ${req.method} ${req.originalUrl}` 
-  });
-}
-
-// Crea un error con código HTTP para lanzarlo desde un controller.
-// Lo atiende errorHandler y responde { ok: false, mensaje }.
-function errorHttp(status, mensaje) {
-  const error = new Error(mensaje);
-  error.status = status;
-  return error;
-}
-
-function errorHandler(err, req, res, next) {
-  const codigo = err.code; // en Postgres el código del RAISE EXCEPTION llega en err.code
-
-  if (CODIGOS_404.includes(codigo)) {
-    return res.status(404).json({ ok: false, codigo, mensaje: err.message });
-  }
-
-  if (CODIGOS_400.includes(codigo)) {
-    return res.status(400).json({ ok: false, codigo, mensaje: err.message });
-  }
-
-  if (codigo === "22P02") {
-    return res.status(400).json({ ok: false, codigo, mensaje: "Algún dato tiene un formato inválido" });
-=======
   res.status(404).json({
     ok: false,
     mensaje: `Ruta no encontrada: ${req.method} ${req.originalUrl}`,
@@ -84,7 +43,6 @@ function errorHandler(err, req, res, _next) {
   // 1. Errores de Base de Datos mapeados a 404 (No encontrado)
   if (CODIGOS_404.has(codigo)) {
     return res.status(404).json({ ok: false, codigo, mensaje: err.message });
->>>>>>> 3cbe6b0e6923097301248c5923c68245e2935a52
   }
 
   // 2. Errores de Base de Datos mapeados a 400 (Bad Request)
@@ -114,8 +72,4 @@ function errorHandler(err, req, res, _next) {
   return res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });
 }
 
-<<<<<<< HEAD
 module.exports = { errorHandler, noEncontrado, errorHttp };
-=======
-module.exports = { errorHandler, noEncontrado, errorHttp };
->>>>>>> 3cbe6b0e6923097301248c5923c68245e2935a52
