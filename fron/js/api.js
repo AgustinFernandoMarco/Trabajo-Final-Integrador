@@ -19,6 +19,16 @@ export const listarPedidos = () => pedirJSON("/pedidos");
 // ===== Agus: búsqueda de pedidos y botones de estado =====
 // (Agus reemplaza esta línea por sus funciones)
 // ===== Santino: catálogos y alta de pedido =====
-// (Santino reemplaza esta línea por sus funciones)
+// Trae el catálogo de productos (la base manda los precios)
+// ===== Santino: catálogos y alta de pedido =====
+// Trae el catálogo de productos (la base manda los precios)
+export const listarProductos = () => pedirJSON("/productos");
+
+// Trae los clientes para el selector
+export const listarClientes = () => pedirJSON("/clientes");
+
+// Envía el pedido; si la API devuelve error, pedirJSON lanza el mensaje del back
+export const crearPedido = (datos) =>
+  pedirJSON("/pedidos", { method: "POST", body: JSON.stringify(datos) });
 // ===== Marlumile: estadísticas y cambio de estado =====
 // (Marlumile reemplaza esta línea por sus funciones)

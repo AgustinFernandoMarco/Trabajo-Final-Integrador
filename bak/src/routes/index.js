@@ -9,3 +9,5 @@ router.use("/pedidos", pedidosRoutes);
 // ----- Marlumile: estadísticas y cambio de estado -----
 // (Marlumile reemplaza esta línea por sus router.use)
 module.exports = router;
+router.use("/", require("./catalogosRoutes"));
+router.use("/pedidos", require("./altaPedidoRoutes"));
