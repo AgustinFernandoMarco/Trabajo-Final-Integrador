@@ -6,5 +6,6 @@ const router = Router();
 
 router.get("/", pedidosController.listar);
 // OJO: las rutas fijas (ej. /buscar) van ANTES de /:id
+router.get("/buscar", pedidosController.buscar);
 
 module.exports = router;

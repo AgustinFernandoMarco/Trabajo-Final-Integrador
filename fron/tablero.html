@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tablero · CelularesVR</title>
   <link rel="stylesheet" href="css/estilos.css">
+  <link rel="stylesheet" href="css/tablero.css">
 </head>
 <body>
   <nav class="navbar">
@@ -14,18 +15,33 @@
     <a href="estadisticas.html">Estadísticas</a>
   </nav>
   <main class="contenedor">
-    <h1>Tablero de pedidos</h1>
-    <div class="tabla-scroll">
-      <table>
-        <thead>
-          <tr><th>#</th><th>Fecha</th><th>Cliente</th><th>Productos</th><th>Total</th><th>Estado</th></tr>
-        </thead>
-        <tbody id="cuerpo-pedidos">
-          <tr><td colspan="6" class="vacio">Cargando…</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </main>
+  <h1>Tablero de pedidos</h1>
+
+  <form id="filtros" class="filtros">
+    <input type="text" id="texto" placeholder="Cliente o producto">
+    <select id="estado">
+      <option value="">Todos los estados</option>
+      <option>Pendiente</option>
+      <option>Listo</option>
+      <option>Entregado</option>
+    </select>
+    <input type="date" id="desde">
+    <input type="date" id="hasta">
+    <button type="submit">Buscar</button>
+    <button type="button" id="limpiar">Limpiar</button>
+  </form>
+
+  <div class="tabla-scroll">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Fecha</th><th>Cliente</th><th>Productos</th><th>Total</th><th>Estado</th></tr>
+      </thead>
+      <tbody id="cuerpo-pedidos">
+        <tr><td colspan="6" class="vacio">Cargando…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
   <script type="module" src="js/tablero.js"></script>
 </body>
 </html>

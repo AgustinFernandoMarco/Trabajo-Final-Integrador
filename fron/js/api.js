@@ -17,7 +17,8 @@ async function pedirJSON(ruta, opciones = {}) {
 export const listarPedidos = () => pedirJSON("/pedidos");
 
 // ===== Agus: búsqueda de pedidos y botones de estado =====
-// (Agus reemplaza esta línea por sus funciones)
+export const buscarPedidos = (filtros) =>
+  pedirJSON(`/pedidos/buscar?${new URLSearchParams(filtros).toString()}`);
 // ===== Santino: catálogos y alta de pedido =====
 // (Santino reemplaza esta línea por sus funciones)
 // ===== Marlumile: estadísticas y cambio de estado =====
