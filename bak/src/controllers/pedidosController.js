@@ -23,4 +23,18 @@ const buscar = asyncHandler(async (req, res) => {
   res.json(pedidos);
 });
 
-module.exports = { listar, buscar };
+// El id llega por la URL y el nuevo estado por el body: PATCH /api/pedidos/:id/estado { "estado": "Listo" }
+const cambiarEstado = asyncHandler(async (req, res) => {
+  const pedidoId = Number(req.params.id);
+  const { estado } = req.body;
+  if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+    throw errorHttp(400, "El id del pedido no es válido.");
+  }
+  if (!ESTADOS.includes(estado)) {
+    throw errorHttp(400, "El estado debe ser Pendiente, Listo o Entregado.");
+  }
+  await pedidosService.cambiarEstado(pedidoId, estado);
+  res.json({ ok: true, mensaje: `El pedido ${pedidoId} pasó a ${estado}.` });
+});
+
+module.exports = { listar, buscar, cambiarEstado };

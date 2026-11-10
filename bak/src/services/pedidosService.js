@@ -15,4 +15,12 @@ async function buscar({ texto, estado, desde, hasta }) {
   );
 }
 
-module.exports = { listar, buscar };
+// Cambio de estado (usp_Pedidos_CambiarEstado). Es un PROCEDURE, por eso se llama con CALL.
+async function cambiarEstado(pedidoId, nuevoEstado) {
+  return consultar("CALL usp_Pedidos_CambiarEstado($1::int, $2::varchar)", [
+    pedidoId,
+    nuevoEstado,
+  ]);
+}
+
+module.exports = { listar, buscar, cambiarEstado };
