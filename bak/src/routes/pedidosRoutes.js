@@ -8,4 +8,5 @@ router.get("/", pedidosController.listar);
 // OJO: las rutas fijas (ej. /buscar) van ANTES de /:id
 router.get("/buscar", pedidosController.buscar);
 
+router.patch("/:id/estado", pedidosController.cambiarEstado);
 module.exports = router;

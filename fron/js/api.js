@@ -22,4 +22,8 @@ export const buscarPedidos = (filtros) =>
 // ===== Santino: catálogos y alta de pedido =====
 // (Santino reemplaza esta línea por sus funciones)
 // ===== Marlumile: estadísticas y cambio de estado =====
-// (Marlumile reemplaza esta línea por sus funciones)
+export const cambiarEstadoPedido = (pedidoId, estado) =>
+  pedirJSON(`/pedidos/${pedidoId}/estado`, {
+    method: "PATCH",
+    body: JSON.stringify({ estado }),
+  });
