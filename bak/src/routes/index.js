@@ -7,7 +7,7 @@ router.use("/pedidos", pedidosRoutes);
 // ----- Santino: catálogos y alta de pedido -----
 // (Santino reemplaza esta línea por sus router.use)
 // ----- Marlumile: estadísticas y cambio de estado -----
-// (Marlumile reemplaza esta línea por sus router.use)
+router.use("/estadisticas", require("./estadisticasRoutes"));
 module.exports = router;
 router.use("/", require("./catalogosRoutes"));
 router.use("/pedidos", require("./altaPedidoRoutes"));

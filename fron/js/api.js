@@ -37,3 +37,4 @@ export const cambiarEstadoPedido = (pedidoId, estado) =>
     method: "PATCH",
     body: JSON.stringify({ estado }),
   });
+  export const listarVentasPorCategoria = () => pedirJSON("/estadisticas/ventas-por-categoria");
