@@ -1,486 +1,441 @@
 /* ============================================================
    CelularesVR - Trabajo Final Integrador (Programación II)
-   Versión PostgreSQL para Supabase.
-
-   Se ejecuta en Supabase > SQL Editor y se puede correr varias veces
-   sin romper nada (es idempotente).
-   Crea: tablas con FK, datos de ejemplo y funciones / procedimientos usp_.
-
-   En Supabase la base de datos y el usuario ya existen, por eso este script
-   no tiene CREATE DATABASE ni CREATE LOGIN.
-   La versión original para SQL Server quedó en db/script.sqlserver.sql
+   Script autosuficiente: se puede ejecutar varias veces sin romper nada.
+   Crea: base, login prog2, tablas con FK, datos de ejemplo y SPs usp_.
    ============================================================ */
 
--- 1) Tablas -------------------------------------------------------
+USE master;
+GO
 
-CREATE TABLE IF NOT EXISTS Categorias (
-    CategoriaId SERIAL PRIMARY KEY,
-    Nombre VARCHAR(50) NOT NULL UNIQUE
+-- 1) Base de datos -------------------------------------------------
+IF DB_ID(N'CelularesVR') IS NULL
+    CREATE DATABASE CelularesVR;
+GO
+
+USE CelularesVR;
+GO
+
+-- 2) Login y usuario prog2 (ajustar la clave a la que use la cátedra) --
+IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'prog2')
+    CREATE LOGIN prog2 WITH PASSWORD = N'Prog2.2026!', CHECK_POLICY = OFF;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'prog2')
+    CREATE USER prog2 FOR LOGIN prog2;
+GO
+
+-- Permisos mínimos: solo puede ejecutar procedimientos almacenados
+GRANT EXECUTE TO prog2;
+GO
+
+-- 3) Tablas -------------------------------------------------------
+IF OBJECT_ID(N'dbo.Categorias', N'U') IS NULL
+CREATE TABLE dbo.Categorias (
+    CategoriaId INT IDENTITY(1,1) CONSTRAINT PK_Categorias PRIMARY KEY,
+    Nombre      NVARCHAR(50) NOT NULL CONSTRAINT UQ_Categorias_Nombre UNIQUE
 );
+GO
 
-CREATE TABLE IF NOT EXISTS Productos (
-    ProductoId SERIAL PRIMARY KEY,
-    CategoriaId INT NOT NULL REFERENCES Categorias(CategoriaId),
-    Nombre VARCHAR(100) NOT NULL,
-    Marca VARCHAR(50) NOT NULL,
-    Precio NUMERIC(12,2) NOT NULL CHECK (Precio > 0),
-    Stock INT NOT NULL CHECK (Stock >= 0),
-    Activo BOOLEAN NOT NULL DEFAULT TRUE
+IF OBJECT_ID(N'dbo.Productos', N'U') IS NULL
+CREATE TABLE dbo.Productos (
+    ProductoId  INT IDENTITY(1,1) CONSTRAINT PK_Productos PRIMARY KEY,
+    CategoriaId INT NOT NULL
+        CONSTRAINT FK_Productos_Categorias REFERENCES dbo.Categorias(CategoriaId),
+    Nombre      NVARCHAR(100) NOT NULL,
+    Marca       NVARCHAR(50)  NOT NULL,
+    Precio      DECIMAL(12,2) NOT NULL CONSTRAINT CK_Productos_Precio CHECK (Precio > 0),
+    Stock       INT NOT NULL CONSTRAINT CK_Productos_Stock CHECK (Stock >= 0),
+    Activo      BIT NOT NULL CONSTRAINT DF_Productos_Activo DEFAULT 1
 );
+GO
 
-CREATE TABLE IF NOT EXISTS Clientes (
-    ClienteId SERIAL PRIMARY KEY,
-    Nombre VARCHAR(100) NOT NULL,
-    Telefono VARCHAR(30) NULL,
-    Email VARCHAR(100) NULL UNIQUE
+IF OBJECT_ID(N'dbo.Clientes', N'U') IS NULL
+CREATE TABLE dbo.Clientes (
+    ClienteId INT IDENTITY(1,1) CONSTRAINT PK_Clientes PRIMARY KEY,
+    Nombre    NVARCHAR(100) NOT NULL,
+    Telefono  NVARCHAR(30)  NULL,
+    Email     NVARCHAR(100) NULL
 );
+GO
 
-CREATE TABLE IF NOT EXISTS Pedidos (
-    PedidoId SERIAL PRIMARY KEY,
-    ClienteId INT NOT NULL REFERENCES Clientes(ClienteId),
-    Fecha TIMESTAMP NOT NULL DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Cordoba'),
-    Estado VARCHAR(20) NOT NULL DEFAULT 'Pendiente'
-        CHECK (Estado IN ('Pendiente', 'Listo', 'Entregado')),
-    Total NUMERIC(14,2) NOT NULL DEFAULT 0
+IF OBJECT_ID(N'dbo.Pedidos', N'U') IS NULL
+CREATE TABLE dbo.Pedidos (
+    PedidoId  INT IDENTITY(1,1) CONSTRAINT PK_Pedidos PRIMARY KEY,
+    ClienteId INT NOT NULL
+        CONSTRAINT FK_Pedidos_Clientes REFERENCES dbo.Clientes(ClienteId),
+    Fecha     DATETIME2(0) NOT NULL CONSTRAINT DF_Pedidos_Fecha DEFAULT SYSDATETIME(),
+    Estado    NVARCHAR(20) NOT NULL CONSTRAINT DF_Pedidos_Estado DEFAULT N'Pendiente'
+        CONSTRAINT CK_Pedidos_Estado CHECK (Estado IN (N'Pendiente', N'Listo', N'Entregado')),
+    Total     DECIMAL(14,2) NOT NULL CONSTRAINT DF_Pedidos_Total DEFAULT 0
 );
+GO
 
-CREATE TABLE IF NOT EXISTS PedidoDetalle (
-    DetalleId SERIAL PRIMARY KEY,
-    PedidoId INT NOT NULL REFERENCES Pedidos(PedidoId) ON DELETE CASCADE,
-    ProductoId INT NOT NULL REFERENCES Productos(ProductoId),
-    Cantidad INT NOT NULL CHECK (Cantidad > 0),
-    PrecioUnitario NUMERIC(12,2) NOT NULL,
-    Subtotal NUMERIC(12,2) GENERATED ALWAYS AS (Cantidad * PrecioUnitario) STORED
+IF OBJECT_ID(N'dbo.PedidoDetalle', N'U') IS NULL
+CREATE TABLE dbo.PedidoDetalle (
+    DetalleId      INT IDENTITY(1,1) CONSTRAINT PK_PedidoDetalle PRIMARY KEY,
+    PedidoId       INT NOT NULL
+        CONSTRAINT FK_Detalle_Pedidos REFERENCES dbo.Pedidos(PedidoId),
+    ProductoId     INT NOT NULL
+        CONSTRAINT FK_Detalle_Productos REFERENCES dbo.Productos(ProductoId),
+    Cantidad       INT NOT NULL CONSTRAINT CK_Detalle_Cantidad CHECK (Cantidad > 0),
+    PrecioUnitario DECIMAL(12,2) NOT NULL,   -- precio al momento de la compra
+    Subtotal AS (Cantidad * PrecioUnitario) PERSISTED  -- lo calcula la base
 );
+GO
 
--- Ajustes que se aplican también si las tablas ya existían (idempotentes) ----
-
--- La fecha de los pedidos nuevos se guarda en hora de Argentina (Supabase trabaja en UTC)
-ALTER TABLE Pedidos ALTER COLUMN Fecha
-    SET DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Cordoba');
-
--- El email de cliente es único: así el INSERT de ejemplo no duplica clientes al re-ejecutar
-DO $$
+-- 4) Datos de ejemplo (solo si las tablas están vacías) ------------
+IF NOT EXISTS (SELECT 1 FROM dbo.Categorias)
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'clientes_email_key') THEN
-        ALTER TABLE Clientes ADD CONSTRAINT clientes_email_key UNIQUE (Email);
-    END IF;
-END $$;
+    INSERT INTO dbo.Categorias (Nombre) VALUES
+        (N'Celulares'), (N'Fundas'), (N'Cargadores y cables'),
+        (N'Auriculares'), (N'Protectores de pantalla');
+END
+GO
 
--- Seguridad: la API pública de Supabase (clave anon) no puede leer ni escribir estas tablas.
--- Nuestro back se conecta con el usuario postgres, que no se ve afectado por RLS.
-ALTER TABLE Categorias    ENABLE ROW LEVEL SECURITY;
-ALTER TABLE Productos     ENABLE ROW LEVEL SECURITY;
-ALTER TABLE Clientes      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE Pedidos       ENABLE ROW LEVEL SECURITY;
-ALTER TABLE PedidoDetalle ENABLE ROW LEVEL SECURITY;
-
--- 2) Datos de ejemplo (se insertan solo si las tablas están vacías) ------------
-
-INSERT INTO Categorias (Nombre)
-VALUES ('Celulares'), ('Fundas'), ('Cargadores y cables'), ('Auriculares'), ('Protectores de pantalla')
-ON CONFLICT (Nombre) DO NOTHING;
-
-DO $$
+IF NOT EXISTS (SELECT 1 FROM dbo.Productos)
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM Productos) THEN
-        INSERT INTO Productos (CategoriaId, Nombre, Marca, Precio, Stock)
-        SELECT c.CategoriaId, v.Nombre, v.Marca, v.Precio, v.Stock
-        FROM (VALUES
-            ('Celulares', 'Samsung Galaxy A15 128GB',    'Samsung',  289999.00, 15),
-            ('Celulares', 'Motorola Moto G54 256GB',     'Motorola', 329999.00, 10),
-            ('Celulares', 'Xiaomi Redmi Note 13 256GB',  'Xiaomi',   399999.00, 12),
-            ('Celulares', 'iPhone 13 128GB',             'Apple',    899999.00, 5),
-            ('Celulares', 'Samsung Galaxy S24 256GB',    'Samsung', 1299999.00, 4),
-            ('Fundas', 'Funda de silicona universal',    'Genérica',  12500.00, 40),
-            ('Fundas', 'Funda antigolpe reforzada',      'Spigen',    18900.00, 25),
-            ('Cargadores y cables', 'Cargador rápido 25W USB-C', 'Samsung', 24900.00, 30),
-            ('Cargadores y cables', 'Cable USB-C a USB-C 1m',    'Anker',    8500.00, 50),
-            ('Auriculares', 'Auriculares Bluetooth TWS', 'JBL',       34900.00, 20),
-            ('Protectores de pantalla', 'Vidrio templado 9H', 'Genérica', 6900.00, 60),
-            ('Cargadores y cables', 'Power bank 10000 mAh',   'Xiaomi',  29900.00, 18)
-        ) AS v(Categoria, Nombre, Marca, Precio, Stock)
-        JOIN Categorias c ON c.Nombre = v.Categoria;
-    END IF;
-END $$;
+    INSERT INTO dbo.Productos (CategoriaId, Nombre, Marca, Precio, Stock)
+    SELECT c.CategoriaId, v.Nombre, v.Marca, v.Precio, v.Stock
+    FROM (VALUES
+        (N'Celulares', N'Samsung Galaxy A15 128GB',    N'Samsung', 289999.00, 15),
+        (N'Celulares', N'Motorola Moto G54 256GB',     N'Motorola', 329999.00, 10),
+        (N'Celulares', N'Xiaomi Redmi Note 13 256GB',  N'Xiaomi',  399999.00, 12),
+        (N'Celulares', N'iPhone 13 128GB',             N'Apple',   899999.00, 5),
+        (N'Celulares', N'Samsung Galaxy S24 256GB',    N'Samsung', 1299999.00, 4),
+        (N'Fundas', N'Funda de silicona universal',    N'Genérica', 12500.00, 40),
+        (N'Fundas', N'Funda antigolpe reforzada',      N'Spigen',   18900.00, 25),
+        (N'Cargadores y cables', N'Cargador rápido 25W USB-C', N'Samsung', 24900.00, 30),
+        (N'Cargadores y cables', N'Cable USB-C a USB-C 1m',    N'Anker',    8500.00, 50),
+        (N'Auriculares', N'Auriculares Bluetooth TWS',  N'JBL',   34900.00, 20),
+        (N'Protectores de pantalla', N'Vidrio templado 9H', N'Genérica', 6900.00, 60),
+        (N'Cargadores y cables', N'Power bank 10000 mAh',   N'Xiaomi', 29900.00, 18)
+    ) AS v(Categoria, Nombre, Marca, Precio, Stock)
+    JOIN dbo.Categorias c ON c.Nombre = v.Categoria;
+END
+GO
 
-INSERT INTO Clientes (Nombre, Telefono, Email)
-VALUES
-    ('Ana Pereyra',    '3525-401122', 'ana.pereyra@mail.com'),
-    ('Luis Gómez',     '3525-402233', 'luis.gomez@mail.com'),
-    ('Marta Ferreyra', '3525-403344', 'marta.ferreyra@mail.com'),
-    ('Diego Rivarola', '3525-404455', 'diego.rivarola@mail.com'),
-    ('Sofía Luna',     '3525-405566', 'sofia.luna@mail.com')
-ON CONFLICT (Email) DO NOTHING;
+IF NOT EXISTS (SELECT 1 FROM dbo.Clientes)
+BEGIN
+    INSERT INTO dbo.Clientes (Nombre, Telefono, Email) VALUES
+        (N'Ana Pereyra',   N'3525-401122', N'ana.pereyra@mail.com'),
+        (N'Luis Gómez',    N'3525-402233', N'luis.gomez@mail.com'),
+        (N'Marta Ferreyra',N'3525-403344', N'marta.ferreyra@mail.com'),
+        (N'Diego Rivarola',N'3525-404455', N'diego.rivarola@mail.com'),
+        (N'Sofía Luna',    N'3525-405566', N'sofia.luna@mail.com');
+END
+GO
 
 -- Pedidos de ejemplo con sus renglones (para que las estadísticas tengan datos)
-DO $$
-DECLARE
-    p INT;
-    ana_id INT;
-    luis_id INT;
-    marta_id INT;
-    diego_id INT;
+IF NOT EXISTS (SELECT 1 FROM dbo.Pedidos)
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM Pedidos) THEN
-        SELECT ClienteId INTO ana_id   FROM Clientes WHERE Email = 'ana.pereyra@mail.com';
-        SELECT ClienteId INTO luis_id  FROM Clientes WHERE Email = 'luis.gomez@mail.com';
-        SELECT ClienteId INTO marta_id FROM Clientes WHERE Email = 'marta.ferreyra@mail.com';
-        SELECT ClienteId INTO diego_id FROM Clientes WHERE Email = 'diego.rivarola@mail.com';
+    DECLARE @p INT;
 
-        -- Pedido 1: Ana, Entregado
-        INSERT INTO Pedidos (ClienteId, Fecha, Estado) VALUES (ana_id, '2026-10-19 10:15:00', 'Entregado') RETURNING PedidoId INTO p;
-        INSERT INTO PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
-        SELECT p, ProductoId, 1, Precio FROM Productos WHERE Nombre = 'Samsung Galaxy A15 128GB';
-        INSERT INTO PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
-        SELECT p, ProductoId, 1, Precio FROM Productos WHERE Nombre = 'Funda de silicona universal';
+    -- Pedido 1: Ana, Entregado
+    INSERT INTO dbo.Pedidos (ClienteId, Fecha, Estado)
+    SELECT ClienteId, '2026-10-19 10:15', N'Entregado' FROM dbo.Clientes WHERE Email = N'ana.pereyra@mail.com';
+    SET @p = SCOPE_IDENTITY();
+    INSERT INTO dbo.PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
+    SELECT @p, ProductoId, 1, Precio FROM dbo.Productos WHERE Nombre = N'Samsung Galaxy A15 128GB';
+    INSERT INTO dbo.PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
+    SELECT @p, ProductoId, 1, Precio FROM dbo.Productos WHERE Nombre = N'Funda de silicona universal';
 
-        -- Pedido 2: Luis, Listo
-        INSERT INTO Pedidos (ClienteId, Fecha, Estado) VALUES (luis_id, '2026-10-22 16:40:00', 'Listo') RETURNING PedidoId INTO p;
-        INSERT INTO PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
-        SELECT p, ProductoId, 1, Precio FROM Productos WHERE Nombre = 'Motorola Moto G54 256GB';
-        INSERT INTO PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
-        SELECT p, ProductoId, 2, Precio FROM Productos WHERE Nombre = 'Vidrio templado 9H';
+    -- Pedido 2: Luis, Listo
+    INSERT INTO dbo.Pedidos (ClienteId, Fecha, Estado)
+    SELECT ClienteId, '2026-10-22 16:40', N'Listo' FROM dbo.Clientes WHERE Email = N'luis.gomez@mail.com';
+    SET @p = SCOPE_IDENTITY();
+    INSERT INTO dbo.PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
+    SELECT @p, ProductoId, 1, Precio FROM dbo.Productos WHERE Nombre = N'Motorola Moto G54 256GB';
+    INSERT INTO dbo.PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
+    SELECT @p, ProductoId, 2, Precio FROM dbo.Productos WHERE Nombre = N'Vidrio templado 9H';
 
-        -- Pedido 3: Marta, Pendiente
-        INSERT INTO Pedidos (ClienteId, Fecha, Estado) VALUES (marta_id, '2026-10-24 11:05:00', 'Pendiente') RETURNING PedidoId INTO p;
-        INSERT INTO PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
-        SELECT p, ProductoId, 1, Precio FROM Productos WHERE Nombre = 'Auriculares Bluetooth TWS';
-        INSERT INTO PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
-        SELECT p, ProductoId, 1, Precio FROM Productos WHERE Nombre = 'Cargador rápido 25W USB-C';
+    -- Pedido 3: Marta, Pendiente
+    INSERT INTO dbo.Pedidos (ClienteId, Fecha, Estado)
+    SELECT ClienteId, '2026-10-24 11:05', N'Pendiente' FROM dbo.Clientes WHERE Email = N'marta.ferreyra@mail.com';
+    SET @p = SCOPE_IDENTITY();
+    INSERT INTO dbo.PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
+    SELECT @p, ProductoId, 1, Precio FROM dbo.Productos WHERE Nombre = N'Auriculares Bluetooth TWS';
+    INSERT INTO dbo.PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
+    SELECT @p, ProductoId, 1, Precio FROM dbo.Productos WHERE Nombre = N'Cargador rápido 25W USB-C';
 
-        -- Pedido 4: Diego, Pendiente
-        INSERT INTO Pedidos (ClienteId, Fecha, Estado) VALUES (diego_id, '2026-10-25 09:30:00', 'Pendiente') RETURNING PedidoId INTO p;
-        INSERT INTO PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
-        SELECT p, ProductoId, 1, Precio FROM Productos WHERE Nombre = 'iPhone 13 128GB';
-        INSERT INTO PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
-        SELECT p, ProductoId, 1, Precio FROM Productos WHERE Nombre = 'Funda antigolpe reforzada';
+    -- Pedido 4: Diego, Pendiente
+    INSERT INTO dbo.Pedidos (ClienteId, Fecha, Estado)
+    SELECT ClienteId, '2026-10-25 09:30', N'Pendiente' FROM dbo.Clientes WHERE Email = N'diego.rivarola@mail.com';
+    SET @p = SCOPE_IDENTITY();
+    INSERT INTO dbo.PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
+    SELECT @p, ProductoId, 1, Precio FROM dbo.Productos WHERE Nombre = N'iPhone 13 128GB';
+    INSERT INTO dbo.PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
+    SELECT @p, ProductoId, 1, Precio FROM dbo.Productos WHERE Nombre = N'Funda antigolpe reforzada';
 
-        -- Total de cada pedido: lo calcula la base a partir de sus renglones
-        UPDATE Pedidos ped
-        SET Total = (SELECT SUM(d.Subtotal) FROM PedidoDetalle d WHERE d.PedidoId = ped.PedidoId);
-    END IF;
-END $$;
-
-
--- 3) Funciones y procedimientos almacenados -------------------------
--- Códigos de error propios (equivalen a los 50001 a 50006 de SQL Server):
---   P0001 detalle inválido o vacío      P0004 pedido inexistente
---   P0002 producto no disponible        P0005 transición de estado inválida
---   P0003 stock insuficiente            P0006 cliente inexistente
-
--- Catálogos
-CREATE OR REPLACE FUNCTION usp_Categorias_Listar()
-RETURNS TABLE (CategoriaId INT, Nombre VARCHAR)
-AS $$
-BEGIN
-    RETURN QUERY
-    SELECT c.CategoriaId, c.Nombre
-    FROM Categorias c
-    ORDER BY c.Nombre;
-END;
-$$ LANGUAGE plpgsql;
-
-
-CREATE OR REPLACE FUNCTION usp_Productos_Listar(p_CategoriaId INT DEFAULT NULL)
-RETURNS TABLE (
-    ProductoId INT,
-    Nombre VARCHAR,
-    Marca VARCHAR,
-    Precio NUMERIC,
-    Stock INT,
-    CategoriaId INT,
-    Categoria VARCHAR
-)
-AS $$
-BEGIN
-    RETURN QUERY
-    SELECT p.ProductoId, p.Nombre, p.Marca, p.Precio, p.Stock, c.CategoriaId, c.Nombre
-    FROM Productos p
-    JOIN Categorias c ON c.CategoriaId = p.CategoriaId
-    WHERE p.Activo = TRUE
-      AND (p_CategoriaId IS NULL OR p.CategoriaId = p_CategoriaId)
-    ORDER BY c.Nombre, p.Nombre;
-END;
-$$ LANGUAGE plpgsql;
-
-
-CREATE OR REPLACE FUNCTION usp_Clientes_Listar()
-RETURNS TABLE (ClienteId INT, Nombre VARCHAR, Telefono VARCHAR, Email VARCHAR)
-AS $$
-BEGIN
-    RETURN QUERY
-    SELECT cl.ClienteId, cl.Nombre, cl.Telefono, cl.Email
-    FROM Clientes cl
-    ORDER BY cl.Nombre;
-END;
-$$ LANGUAGE plpgsql;
-
-
--- Consulta 1: LISTADO RELACIONADO (une 4 tablas con JOIN)
-CREATE OR REPLACE FUNCTION usp_Pedidos_Listar()
-RETURNS TABLE (
-    PedidoId INT,
-    Fecha TIMESTAMP,
-    Estado VARCHAR,
-    Total NUMERIC,
-    Cliente VARCHAR,
-    Productos TEXT
-)
-AS $$
-BEGIN
-    RETURN QUERY
-    SELECT ped.PedidoId, ped.Fecha, ped.Estado, ped.Total,
-           cli.Nombre AS Cliente,
-           STRING_AGG(CONCAT(pro.Nombre, ' x', det.Cantidad), ', ') AS Productos
-    FROM Pedidos ped
-    JOIN Clientes cli      ON cli.ClienteId  = ped.ClienteId
-    JOIN PedidoDetalle det ON det.PedidoId   = ped.PedidoId
-    JOIN Productos pro     ON pro.ProductoId = det.ProductoId
-    GROUP BY ped.PedidoId, ped.Fecha, ped.Estado, ped.Total, cli.Nombre
-    ORDER BY ped.Fecha DESC;
-END;
-$$ LANGUAGE plpgsql;
-
-
--- Consulta 2: BÚSQUEDA CON FILTROS OPCIONALES
-CREATE OR REPLACE FUNCTION usp_Pedidos_Buscar(
-    p_Texto VARCHAR DEFAULT NULL,
-    p_Estado VARCHAR DEFAULT NULL,
-    p_Desde DATE DEFAULT NULL,
-    p_Hasta DATE DEFAULT NULL
-)
-RETURNS TABLE (
-    PedidoId INT,
-    Fecha TIMESTAMP,
-    Estado VARCHAR,
-    Total NUMERIC,
-    Cliente VARCHAR,
-    Productos TEXT
-)
-AS $$
-BEGIN
-    RETURN QUERY
-    SELECT ped.PedidoId, ped.Fecha, ped.Estado, ped.Total,
-           cli.Nombre AS Cliente,
-           STRING_AGG(CONCAT(pro.Nombre, ' x', det.Cantidad), ', ') AS Productos
-    FROM Pedidos ped
-    JOIN Clientes cli      ON cli.ClienteId  = ped.ClienteId
-    JOIN PedidoDetalle det ON det.PedidoId   = ped.PedidoId
-    JOIN Productos pro     ON pro.ProductoId = det.ProductoId
-    WHERE (p_Estado IS NULL OR ped.Estado = p_Estado)
-      AND (p_Desde IS NULL OR ped.Fecha >= p_Desde)
-      AND (p_Hasta IS NULL OR ped.Fecha < (p_Hasta + INTERVAL '1 day'))
-      AND (p_Texto IS NULL
-           OR cli.Nombre ILIKE '%' || p_Texto || '%'
-           OR EXISTS (SELECT 1
-                      FROM PedidoDetalle d2
-                      JOIN Productos p2 ON p2.ProductoId = d2.ProductoId
-                      WHERE d2.PedidoId = ped.PedidoId
-                        AND p2.Nombre ILIKE '%' || p_Texto || '%'))
-    GROUP BY ped.PedidoId, ped.Fecha, ped.Estado, ped.Total, cli.Nombre
-    ORDER BY ped.Fecha DESC;
-END;
-$$ LANGUAGE plpgsql;
-
-
--- Consulta 3: AGREGADA (GROUP BY + COUNT/SUM + STRING_AGG)
-CREATE OR REPLACE FUNCTION usp_Estadisticas_VentasPorCategoria()
-RETURNS TABLE (
-    CategoriaId INT,
-    Categoria VARCHAR,
-    CantPedidos BIGINT,
-    Unidades BIGINT,
-    TotalVendido NUMERIC,
-    Productos TEXT
-)
-AS $$
-BEGIN
-    RETURN QUERY
-    SELECT c.CategoriaId,
-           c.Nombre AS Categoria,
-           COUNT(DISTINCT det.PedidoId) AS CantPedidos,
-           SUM(det.Cantidad) AS Unidades,
-           SUM(det.Subtotal) AS TotalVendido,
-           (SELECT STRING_AGG(x.Nombre, ', ')
-            FROM (SELECT DISTINCT p2.Nombre
-                  FROM PedidoDetalle d2
-                  JOIN Productos p2 ON p2.ProductoId = d2.ProductoId
-                  WHERE p2.CategoriaId = c.CategoriaId) AS x) AS Productos
-    FROM Categorias c
-    JOIN Productos p       ON p.CategoriaId = c.CategoriaId
-    JOIN PedidoDetalle det ON det.ProductoId = p.ProductoId
-    GROUP BY c.CategoriaId, c.Nombre
-    ORDER BY SUM(det.Subtotal) DESC;
-END;
-$$ LANGUAGE plpgsql;
-
-
--- Detalle de un pedido (sirve para probar el error de pedido inexistente)
-CREATE OR REPLACE FUNCTION usp_Pedidos_Obtener(p_PedidoId INT)
-RETURNS TABLE (
-    PedidoId INT,
-    Fecha TIMESTAMP,
-    Estado VARCHAR,
-    Total NUMERIC,
-    Cliente VARCHAR,
-    DetalleId INT,
-    ProductoId INT,
-    Producto VARCHAR,
-    Cantidad INT,
-    PrecioUnitario NUMERIC,
-    Subtotal NUMERIC
-)
-AS $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM Pedidos WHERE Pedidos.PedidoId = p_PedidoId) THEN
-        RAISE EXCEPTION 'El pedido indicado no existe.' USING ERRCODE = 'P0004';
-    END IF;
-
-    RETURN QUERY
-    SELECT ped.PedidoId, ped.Fecha, ped.Estado, ped.Total, cli.Nombre AS Cliente,
-           det.DetalleId, pro.ProductoId, pro.Nombre AS Producto,
-           det.Cantidad, det.PrecioUnitario, det.Subtotal
-    FROM Pedidos ped
-    JOIN Clientes cli      ON cli.ClienteId  = ped.ClienteId
-    JOIN PedidoDetalle det ON det.PedidoId   = ped.PedidoId
-    JOIN Productos pro     ON pro.ProductoId = det.ProductoId
-    WHERE ped.PedidoId = p_PedidoId;
-END;
-$$ LANGUAGE plpgsql;
-
-
--- Operación de negocio: crear un pedido. El detalle viaja como JSON (jsonb).
--- Es una sola transacción: si algo falla, no se guarda nada.
-CREATE OR REPLACE PROCEDURE usp_Pedidos_Crear(
-    IN p_ClienteId INT,
-    IN p_DetalleJson JSONB,
-    OUT p_PedidoId INT
-)
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    -- Validar cliente
-    IF NOT EXISTS (SELECT 1 FROM Clientes WHERE ClienteId = p_ClienteId) THEN
-        RAISE EXCEPTION 'El cliente indicado no existe.' USING ERRCODE = 'P0006';
-    END IF;
-
-    -- Validar que el detalle sea un arreglo JSON con renglones
-    IF p_DetalleJson IS NULL OR jsonb_typeof(p_DetalleJson) IS DISTINCT FROM 'array' THEN
-        RAISE EXCEPTION 'El detalle del pedido es inválido o está vacío.' USING ERRCODE = 'P0001';
-    END IF;
-    IF jsonb_array_length(p_DetalleJson) = 0 THEN
-        RAISE EXCEPTION 'El detalle del pedido es inválido o está vacío.' USING ERRCODE = 'P0001';
-    END IF;
-
-    -- Tabla temporal con los renglones (se agrupa por producto por si viene repetido)
-    CREATE TEMP TABLE IF NOT EXISTS _tmp_items (
-        ProductoId INT PRIMARY KEY,
-        Cantidad INT NOT NULL
-    ) ON COMMIT DROP;
-
-    DELETE FROM _tmp_items;
-
-    INSERT INTO _tmp_items (ProductoId, Cantidad)
-    SELECT (j->>'productoId')::INT,
-           COALESCE(SUM((j->>'cantidad')::INT), 0)
-    FROM jsonb_array_elements(p_DetalleJson) AS j
-    WHERE j->>'productoId' IS NOT NULL
-    GROUP BY (j->>'productoId')::INT;
-
-    IF NOT EXISTS (SELECT 1 FROM _tmp_items) OR EXISTS (SELECT 1 FROM _tmp_items WHERE Cantidad <= 0) THEN
-        RAISE EXCEPTION 'El pedido debe tener al menos un renglón con cantidad mayor a cero.' USING ERRCODE = 'P0001';
-    END IF;
-
-    -- Validar que los productos existan y estén activos
-    IF EXISTS (
-        SELECT 1 FROM _tmp_items i
-        LEFT JOIN Productos p ON p.ProductoId = i.ProductoId AND p.Activo = TRUE
-        WHERE p.ProductoId IS NULL
-    ) THEN
-        RAISE EXCEPTION 'Alguno de los productos no existe o no está disponible.' USING ERRCODE = 'P0002';
-    END IF;
-
-    -- Bloquear las filas de los productos: dos pedidos a la vez no pueden vender el mismo stock
-    PERFORM 1
-    FROM Productos p
-    JOIN _tmp_items i ON i.ProductoId = p.ProductoId
-    FOR UPDATE OF p;
-
-    -- Validar stock
-    IF EXISTS (
-        SELECT 1 FROM _tmp_items i
-        JOIN Productos p ON p.ProductoId = i.ProductoId
-        WHERE p.Stock < i.Cantidad
-    ) THEN
-        RAISE EXCEPTION 'Stock insuficiente para uno o más productos.' USING ERRCODE = 'P0003';
-    END IF;
-
-    -- Cabecera del pedido
-    INSERT INTO Pedidos (ClienteId) VALUES (p_ClienteId) RETURNING Pedidos.PedidoId INTO p_PedidoId;
-
-    -- Renglones: el precio lo toma la base de la tabla Productos (nunca viene del front)
-    INSERT INTO PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
-    SELECT p_PedidoId, i.ProductoId, i.Cantidad, p.Precio
-    FROM _tmp_items i
-    JOIN Productos p ON p.ProductoId = i.ProductoId;
-
-    -- Descontar stock
-    UPDATE Productos p
-    SET Stock = p.Stock - i.Cantidad
-    FROM _tmp_items i
-    WHERE p.ProductoId = i.ProductoId;
-
-    -- Total del pedido: lo calcula la base
-    UPDATE Pedidos
-    SET Total = (SELECT SUM(d.Subtotal) FROM PedidoDetalle d WHERE d.PedidoId = p_PedidoId)
-    WHERE Pedidos.PedidoId = p_PedidoId;
-
-    DROP TABLE IF EXISTS _tmp_items;
-END;
-$$;
-
-
--- Cambio de estado: Pendiente -> Listo -> Entregado (no se puede retroceder ni saltear)
-CREATE OR REPLACE PROCEDURE usp_Pedidos_CambiarEstado(
-    IN p_PedidoId INT,
-    IN p_NuevoEstado VARCHAR
-)
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    v_EstadoActual VARCHAR;
-BEGIN
-    SELECT Estado INTO v_EstadoActual
-    FROM Pedidos
-    WHERE PedidoId = p_PedidoId
-    FOR UPDATE;
-
-    IF v_EstadoActual IS NULL THEN
-        RAISE EXCEPTION 'El pedido indicado no existe.' USING ERRCODE = 'P0004';
-    END IF;
-
-    IF NOT ( (v_EstadoActual = 'Pendiente' AND p_NuevoEstado = 'Listo')
-          OR (v_EstadoActual = 'Listo'     AND p_NuevoEstado = 'Entregado') ) THEN
-        RAISE EXCEPTION 'Transición de estado inválida: no se puede retroceder ni saltear estados.' USING ERRCODE = 'P0005';
-    END IF;
-
-    UPDATE Pedidos SET Estado = p_NuevoEstado WHERE PedidoId = p_PedidoId;
-END;
-$$;
-
+    -- Totales calculados por la base a partir del detalle
+    UPDATE ped
+    SET Total = (SELECT SUM(d.Subtotal) FROM dbo.PedidoDetalle d WHERE d.PedidoId = ped.PedidoId)
+    FROM dbo.Pedidos ped;
+END
+GO
 
 /* ============================================================
-   4) Pruebas rápidas (copiar de a una consulta en el SQL Editor)
-   ============================================================
--- SELECT * FROM usp_Pedidos_Listar();
--- SELECT * FROM usp_Pedidos_Buscar(NULL, 'Pendiente', NULL, NULL);
--- SELECT * FROM usp_Estadisticas_VentasPorCategoria();
--- CALL usp_Pedidos_Crear(1, '[{"productoId":1,"cantidad":1},{"productoId":6,"cantidad":2}]'::jsonb, NULL);
--- CALL usp_Pedidos_CambiarEstado(3, 'Listo');
--- CALL usp_Pedidos_CambiarEstado(3, 'Pendiente');   -- error P0005
-
-   Para dejar la base como nueva (borra todo y vuelve a cargar los datos de ejemplo):
--- TRUNCATE PedidoDetalle, Pedidos, Productos, Clientes, Categorias RESTART IDENTITY CASCADE;
-   y después ejecutar este script completo otra vez.
+   5) Procedimientos almacenados (prefijo usp_)
+   Códigos de error propios:
+     50001 pedido sin renglones válidos      -> HTTP 400
+     50002 producto inexistente o inactivo   -> HTTP 400
+     50003 stock insuficiente                -> HTTP 400
+     50004 pedido no encontrado              -> HTTP 404
+     50005 transición de estado inválida     -> HTTP 400
+     50006 cliente no encontrado             -> HTTP 404
    ============================================================ */
+
+-- Catálogos ------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_Categorias_Listar
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT CategoriaId, Nombre FROM dbo.Categorias ORDER BY Nombre;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.usp_Productos_Listar
+    @CategoriaId INT = NULL      -- opcional: filtra por categoría
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT p.ProductoId, p.Nombre, p.Marca, p.Precio, p.Stock,
+           c.CategoriaId, c.Nombre AS Categoria
+    FROM dbo.Productos p
+    JOIN dbo.Categorias c ON c.CategoriaId = p.CategoriaId
+    WHERE p.Activo = 1
+      AND (@CategoriaId IS NULL OR p.CategoriaId = @CategoriaId)
+    ORDER BY c.Nombre, p.Nombre;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.usp_Clientes_Listar
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT ClienteId, Nombre, Telefono, Email FROM dbo.Clientes ORDER BY Nombre;
+END
+GO
+
+-- Consulta 1: LISTADO RELACIONADO (une 4 tablas con JOIN) ----------
+CREATE OR ALTER PROCEDURE dbo.usp_Pedidos_Listar
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT ped.PedidoId, ped.Fecha, ped.Estado, ped.Total,
+           cli.Nombre AS Cliente,
+           STRING_AGG(CONCAT(pro.Nombre, N' x', det.Cantidad), N', ') AS Productos
+    FROM dbo.Pedidos ped
+    JOIN dbo.Clientes cli      ON cli.ClienteId  = ped.ClienteId
+    JOIN dbo.PedidoDetalle det ON det.PedidoId   = ped.PedidoId
+    JOIN dbo.Productos pro     ON pro.ProductoId = det.ProductoId
+    GROUP BY ped.PedidoId, ped.Fecha, ped.Estado, ped.Total, cli.Nombre
+    ORDER BY ped.Fecha DESC;
+END
+GO
+
+-- Consulta 2: BÚSQUEDA CON FILTROS OPCIONALES ----------------------
+CREATE OR ALTER PROCEDURE dbo.usp_Pedidos_Buscar
+    @Texto  NVARCHAR(100) = NULL,   -- nombre de cliente o de producto
+    @Estado NVARCHAR(20)  = NULL,
+    @Desde  DATE          = NULL,
+    @Hasta  DATE          = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT ped.PedidoId, ped.Fecha, ped.Estado, ped.Total,
+           cli.Nombre AS Cliente,
+           STRING_AGG(CONCAT(pro.Nombre, N' x', det.Cantidad), N', ') AS Productos
+    FROM dbo.Pedidos ped
+    JOIN dbo.Clientes cli      ON cli.ClienteId  = ped.ClienteId
+    JOIN dbo.PedidoDetalle det ON det.PedidoId   = ped.PedidoId
+    JOIN dbo.Productos pro     ON pro.ProductoId = det.ProductoId
+    WHERE (@Estado IS NULL OR ped.Estado = @Estado)
+      AND (@Desde  IS NULL OR ped.Fecha >= @Desde)
+      AND (@Hasta  IS NULL OR ped.Fecha <  DATEADD(DAY, 1, @Hasta))
+      AND (@Texto  IS NULL
+           OR cli.Nombre LIKE N'%' + @Texto + N'%'
+           OR EXISTS (SELECT 1
+                      FROM dbo.PedidoDetalle d2
+                      JOIN dbo.Productos p2 ON p2.ProductoId = d2.ProductoId
+                      WHERE d2.PedidoId = ped.PedidoId
+                        AND p2.Nombre LIKE N'%' + @Texto + N'%'))
+    GROUP BY ped.PedidoId, ped.Fecha, ped.Estado, ped.Total, cli.Nombre
+    ORDER BY ped.Fecha DESC;
+END
+GO
+
+-- Consulta 3: AGREGADA (GROUP BY + COUNT/SUM + STRING_AGG) ---------
+CREATE OR ALTER PROCEDURE dbo.usp_Estadisticas_VentasPorCategoria
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT c.CategoriaId,
+           c.Nombre                      AS Categoria,
+           COUNT(DISTINCT det.PedidoId)  AS CantPedidos,
+           SUM(det.Cantidad)             AS Unidades,
+           SUM(det.Subtotal)             AS TotalVendido,
+           (SELECT STRING_AGG(x.Nombre, N', ')
+            FROM (SELECT DISTINCT p2.Nombre
+                  FROM dbo.PedidoDetalle d2
+                  JOIN dbo.Productos p2 ON p2.ProductoId = d2.ProductoId
+                  WHERE p2.CategoriaId = c.CategoriaId) AS x) AS Productos
+    FROM dbo.Categorias c
+    JOIN dbo.Productos p       ON p.CategoriaId = c.CategoriaId
+    JOIN dbo.PedidoDetalle det ON det.ProductoId = p.ProductoId
+    GROUP BY c.CategoriaId, c.Nombre
+    ORDER BY TotalVendido DESC;
+END
+GO
+
+-- Detalle de un pedido (sirve para probar el 404) ------------------
+CREATE OR ALTER PROCEDURE dbo.usp_Pedidos_Obtener
+    @PedidoId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM dbo.Pedidos WHERE PedidoId = @PedidoId)
+        THROW 50004, N'El pedido indicado no existe.', 1;
+
+    SELECT ped.PedidoId, ped.Fecha, ped.Estado, ped.Total, cli.Nombre AS Cliente
+    FROM dbo.Pedidos ped
+    JOIN dbo.Clientes cli ON cli.ClienteId = ped.ClienteId
+    WHERE ped.PedidoId = @PedidoId;
+
+    SELECT det.DetalleId, pro.ProductoId, pro.Nombre AS Producto,
+           det.Cantidad, det.PrecioUnitario, det.Subtotal
+    FROM dbo.PedidoDetalle det
+    JOIN dbo.Productos pro ON pro.ProductoId = det.ProductoId
+    WHERE det.PedidoId = @PedidoId;
+END
+GO
+
+-- Consulta 4: OPERACIÓN DE NEGOCIO CON REGLAS ----------------------
+-- @DetalleJson ejemplo: [{"productoId":1,"cantidad":2},{"productoId":6,"cantidad":1}]
+CREATE OR ALTER PROCEDURE dbo.usp_Pedidos_Crear
+    @ClienteId   INT,
+    @DetalleJson NVARCHAR(MAX),
+    @PedidoId    INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        -- Validación: el cliente debe existir
+        IF NOT EXISTS (SELECT 1 FROM dbo.Clientes WHERE ClienteId = @ClienteId)
+            THROW 50006, N'El cliente indicado no existe.', 1;
+
+        -- Validación: el JSON debe ser válido
+        IF @DetalleJson IS NULL OR ISJSON(@DetalleJson) = 0
+            THROW 50001, N'El detalle del pedido es inválido o está vacío.', 1;
+
+        -- Se abre el JSON con OPENJSON; se agrupa por producto por si viene repetido
+        DECLARE @Items TABLE (ProductoId INT PRIMARY KEY, Cantidad INT NOT NULL);
+
+        INSERT INTO @Items (ProductoId, Cantidad)
+        SELECT productoId, SUM(cantidad)
+        FROM OPENJSON(@DetalleJson)
+             WITH (productoId INT '$.productoId', cantidad INT '$.cantidad')
+        WHERE productoId IS NOT NULL
+        GROUP BY productoId;
+
+        IF NOT EXISTS (SELECT 1 FROM @Items) OR EXISTS (SELECT 1 FROM @Items WHERE Cantidad IS NULL OR Cantidad <= 0)
+            THROW 50001, N'El pedido debe tener al menos un renglón con cantidad mayor a cero.', 1;
+
+        -- Validación: todos los productos deben existir y estar activos
+        IF EXISTS (SELECT 1
+                   FROM @Items i
+                   LEFT JOIN dbo.Productos p ON p.ProductoId = i.ProductoId AND p.Activo = 1
+                   WHERE p.ProductoId IS NULL)
+            THROW 50002, N'Alguno de los productos no existe o no está disponible.', 1;
+
+        -- Validación: stock suficiente (se bloquean las filas para evitar ventas simultáneas)
+        IF EXISTS (SELECT 1
+                   FROM @Items i
+                   JOIN dbo.Productos p WITH (UPDLOCK, HOLDLOCK) ON p.ProductoId = i.ProductoId
+                   WHERE p.Stock < i.Cantidad)
+            THROW 50003, N'Stock insuficiente para uno o más productos.', 1;
+
+        -- Alta del pedido
+        INSERT INTO dbo.Pedidos (ClienteId) VALUES (@ClienteId);
+        SET @PedidoId = SCOPE_IDENTITY();
+
+        -- Renglones: el precio lo toma la base, nunca el front
+        INSERT INTO dbo.PedidoDetalle (PedidoId, ProductoId, Cantidad, PrecioUnitario)
+        SELECT @PedidoId, i.ProductoId, i.Cantidad, p.Precio
+        FROM @Items i
+        JOIN dbo.Productos p ON p.ProductoId = i.ProductoId;
+
+        -- Descuento de stock
+        UPDATE p
+        SET p.Stock = p.Stock - i.Cantidad
+        FROM dbo.Productos p
+        JOIN @Items i ON i.ProductoId = p.ProductoId;
+
+        -- Total calculado por la base
+        UPDATE dbo.Pedidos
+        SET Total = (SELECT SUM(Subtotal) FROM dbo.PedidoDetalle WHERE PedidoId = @PedidoId)
+        WHERE PedidoId = @PedidoId;
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;   -- se relanza el error original para que lo traduzca el middleware
+    END CATCH
+END
+GO
+
+-- Cambio de estado: Pendiente -> Listo -> Entregado ----------------
+CREATE OR ALTER PROCEDURE dbo.usp_Pedidos_CambiarEstado
+    @PedidoId    INT,
+    @NuevoEstado NVARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        DECLARE @EstadoActual NVARCHAR(20);
+
+        SELECT @EstadoActual = Estado
+        FROM dbo.Pedidos WITH (UPDLOCK)
+        WHERE PedidoId = @PedidoId;
+
+        IF @EstadoActual IS NULL
+            THROW 50004, N'El pedido indicado no existe.', 1;
+
+        -- Solo se permite avanzar un paso: no se retrocede ni se saltea
+        IF NOT ( (@EstadoActual = N'Pendiente' AND @NuevoEstado = N'Listo')
+              OR (@EstadoActual = N'Listo'     AND @NuevoEstado = N'Entregado') )
+            THROW 50005, N'Transición de estado inválida: no se puede retroceder ni saltear estados.', 1;
+
+        UPDATE dbo.Pedidos SET Estado = @NuevoEstado WHERE PedidoId = @PedidoId;
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+/* ============================================================
+   6) Pruebas rápidas (descomentar para probar en SSMS)
+   ============================================================
+-- DECLARE @id INT;
+-- EXEC dbo.usp_Pedidos_Crear @ClienteId = 1,
+--      @DetalleJson = N'[{"productoId":1,"cantidad":1},{"productoId":6,"cantidad":2}]',
+--      @PedidoId = @id OUTPUT;
+-- SELECT @id AS PedidoCreado;
+-- EXEC dbo.usp_Pedidos_Listar;
+-- EXEC dbo.usp_Pedidos_Buscar @Estado = N'Pendiente';
+-- EXEC dbo.usp_Estadisticas_VentasPorCategoria;
+-- EXEC dbo.usp_Pedidos_CambiarEstado @PedidoId = 3, @NuevoEstado = N'Listo';
+-- EXEC dbo.usp_Pedidos_CambiarEstado @PedidoId = 3, @NuevoEstado = N'Pendiente'; -- error 50005
+*/
