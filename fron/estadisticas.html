@@ -15,7 +15,17 @@
   </nav>
   <main class="contenedor">
     <h1>Ventas por categoría</h1>
-    <p class="vacio">En construcción (integrante C).</p>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr><th>Categoría</th><th>Pedidos</th><th>Unidades</th><th>Total vendido</th><th>Productos</th></tr>
+        </thead>
+        <tbody id="cuerpo-estadisticas">
+          <tr><td colspan="5" class="vacio">Cargando…</td></tr>
+        </tbody>
+      </table>
+    </div>
   </main>
+  <script type="module" src="js/estadisticas.js"></script>
 </body>
 </html>
