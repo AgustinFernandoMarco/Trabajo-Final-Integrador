@@ -1,4 +1,5 @@
 // Componente puro: recibe un pedido y devuelve una fila <tr>.
+import { botonEstado } from "./botonEstado.js";
 import { escapeHtml, formatoPrecio, formatoFecha } from "./util.js";
 import { badgeEstado } from "./badgeEstado.js";
 
@@ -11,5 +12,6 @@ export function filaPedido(pedido) {
       <td>${escapeHtml(pedido.Productos)}</td>
       <td class="num">${formatoPrecio.format(pedido.Total)}</td>
       <td>${badgeEstado(pedido.Estado)}</td>
+      <td>${botonEstado(pedido)}</td>
     </tr>`;
 }
