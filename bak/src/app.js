@@ -16,5 +16,4 @@ app.use("/api", noEncontrado);
 app.use(errorHandler);
 
 module.exports = app;
-router.use("/", require("./catalogosRoutes"));
-router.use("/pedidos", require("./altaPedidoRoutes"));
+
