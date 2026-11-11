@@ -1,5 +1,5 @@
-// Pantalla del tablero: listado con JOIN y búsqueda con filtros.
-import { listarPedidos, buscarPedidos } from "./api.js";
+// Pantalla del tablero: listado con JOIN, búsqueda con filtros y cambio de estado.
+import { listarPedidos, buscarPedidos, cambiarEstadoPedido } from "./api.js";
 import { filaPedido } from "../componentes/filaPedido.js";
 import { mensajeVacio } from "../componentes/mensajeVacio.js";
 
@@ -27,12 +27,26 @@ async function cargar() {
       ? pedidos.map(filaPedido).join("")
       : mensajeVacio(
           hayFiltros ? "No hay pedidos que coincidan con la búsqueda" : "Todavía no hay pedidos cargados",
-          6
+          7
         );
   } catch (error) {
-    cuerpo.innerHTML = mensajeVacio(`No se pudo cargar el listado: ${error.message}`, 6);
+    cuerpo.innerHTML = mensajeVacio(`No se pudo cargar el listado: ${error.message}`, 7);
   }
 }
+
+// Clic en un botón "Pasar a ..." de cualquier fila
+cuerpo.addEventListener("click", async (evento) => {
+  const boton = evento.target.closest(".btn-estado");
+  if (!boton) return;
+  boton.disabled = true;
+  try {
+    await cambiarEstadoPedido(Number(boton.dataset.id), boton.dataset.estado);
+    await cargar();
+  } catch (error) {
+    alert(`No se pudo cambiar el estado: ${error.message}`);
+    boton.disabled = false;
+  }
+});
 
 formulario.addEventListener("submit", (evento) => {
   evento.preventDefault();

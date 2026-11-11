@@ -2,6 +2,15 @@
 import { escapeHtml, formatoPrecio, formatoFecha } from "./util.js";
 import { badgeEstado } from "./badgeEstado.js";
 
+// Cada estado solo puede avanzar al siguiente (la base no deja retroceder ni saltear)
+const SIGUIENTE_ESTADO = { Pendiente: "Listo", Listo: "Entregado" };
+
+function celdaAccion(pedido) {
+  const siguiente = SIGUIENTE_ESTADO[pedido.Estado];
+  if (!siguiente) return "<td>—</td>";
+  return `<td><button class="btn-estado" data-id="${pedido.PedidoId}" data-estado="${siguiente}">Pasar a ${siguiente}</button></td>`;
+}
+
 export function filaPedido(pedido) {
   return `
     <tr>
@@ -11,5 +20,6 @@ export function filaPedido(pedido) {
       <td>${escapeHtml(pedido.Productos)}</td>
       <td class="num">${formatoPrecio.format(pedido.Total)}</td>
       <td>${badgeEstado(pedido.Estado)}</td>
+      ${celdaAccion(pedido)}
     </tr>`;
 }
