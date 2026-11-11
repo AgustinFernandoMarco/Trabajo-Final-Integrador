@@ -13,24 +13,27 @@
     <a href="tablero.html">Tablero</a>
     <a href="estadisticas.html">Estadísticas</a>
   </nav>
+
   <main class="contenedor">
     <h1>Nuevo pedido</h1>
-    <p class="vacio">En construcción (integrante A).</p>
+
+    <div class="selector-cliente">
+      <label for="select-cliente">Cliente</label>
+      <select id="select-cliente"></select>
+    </div>
+
+    <div class="layout-pedido">
+      <section id="catalogo" class="grilla"></section>
+
+      <aside class="panel-resumen">
+        <h2>Resumen del pedido</h2>
+        <div id="resumen"></div>
+        <button id="btn-confirmar" class="btn-confirmar" disabled>Confirmar pedido</button>
+        <p id="mensaje" class="mensaje"></p>
+      </aside>
+    </div>
   </main>
+
+  <script type="module" src="js/index.js"></script>
 </body>
 </html>
-<main>
-  <h1>Nuevo pedido</h1>
-  <label for="select-cliente">Cliente</label>
-  <select id="select-cliente"></select>
-
-  <section id="catalogo" class="grilla"></section>
-
-  <aside>
-    <h2>Resumen del pedido</h2>
-    <div id="resumen"></div>
-    <button id="btn-confirmar" disabled>Confirmar pedido</button>
-    <p id="mensaje" class="mensaje"></p>
-  </aside>
-</main>
-<script type="module" src="js/index.js"></script>

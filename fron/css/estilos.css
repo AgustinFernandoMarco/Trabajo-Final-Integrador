@@ -17,3 +17,177 @@ td.num { text-align: right; white-space: nowrap; }
 .badge-pendiente { background: #fef3c7; color: #92400e; }
 .badge-listo { background: #dbeafe; color: #1e40af; }
 .badge-entregado { background: #dcfce7; color: #166534; }
+/* ===== Pantalla de nuevo pedido ===== */
+
+/* Selector de cliente */
+.selector-cliente {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+.selector-cliente label {
+  font-weight: 600;
+}
+.selector-cliente select {
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 1rem;
+  min-width: 240px;
+}
+
+/* Catálogo a la izquierda, resumen a la derecha */
+.layout-pedido {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+/* Grilla de tarjetas de producto */
+.grilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 1rem;
+}
+
+.tarjeta {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.tarjeta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.1);
+}
+.tarjeta h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.3;
+}
+.tarjeta .marca {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+.tarjeta .precio {
+  margin: 0.4rem 0 0.6rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1d4ed8;
+}
+
+/* Botones */
+.btn-agregar,
+.btn-confirmar {
+  border: none;
+  border-radius: 8px;
+  background: #1d4ed8;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-agregar {
+  margin-top: auto;
+}
+.btn-agregar:hover,
+.btn-confirmar:hover:not(:disabled) {
+  background: #1e40af;
+}
+.btn-confirmar {
+  width: 100%;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+}
+.btn-confirmar:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+/* Panel del resumen (queda fijo al scrollear) */
+.panel-resumen {
+  position: sticky;
+  top: 1rem;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.panel-resumen h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.15rem;
+}
+
+.lista-resumen {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.lista-resumen li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 0.92rem;
+}
+.btn-quitar {
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  background: #fff;
+  color: #b91c1c;
+  font-size: 0.8rem;
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+}
+.btn-quitar:hover {
+  background: #fef2f2;
+}
+.total {
+  margin: 0.9rem 0 0;
+  font-size: 1.05rem;
+  text-align: right;
+}
+
+/* Mensajes de éxito y error */
+.mensaje {
+  margin: 0.9rem 0 0;
+  padding: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.mensaje.ok {
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  background: #dcfce7;
+  color: #166534;
+}
+.mensaje.error {
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* En pantallas chicas el resumen pasa debajo del catálogo */
+@media (max-width: 860px) {
+  .layout-pedido {
+    grid-template-columns: 1fr;
+  }
+  .panel-resumen {
+    position: static;
+  }
+}
